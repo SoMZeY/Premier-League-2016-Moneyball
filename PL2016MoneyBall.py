@@ -1,121 +1,168 @@
+#!/usr/bin/env python3
 import pandas as pd
-from pulp import LpMaximize, LpProblem, LpVariable, lpSum
+from pulp import LpMaximize, LpProblem, LpVariable, lpSum, LpStatus, PULP_CBC_CMD
 import sys
 
 # Static dataset file path
 DATASET_FILE = "PlayerDataSet.csv"
 
-# Display help for headers
-def display_help():
-    data = pd.read_csv(DATASET_FILE)
-    headers = data.columns.tolist()
-    print("Available Headers for Criteria and Constraints:")
-    print(", ".join(headers))
-    print("\nExamples:")
-    print("Criteria: goals=5,fouls=-3,interceptions=2")
-    print("Constraints: team_size=11,fouls<=10,defenders>=4")
-    print("\nRun the program with './program run' to start optimization.")
-    sys.exit()
-
-# Load the dataset
 def load_dataset():
-    return pd.read_csv(DATASET_FILE)
+    """
+    Load the dataset from the CSV file.
+    """
+    try:
+        data = pd.read_csv(DATASET_FILE)
+        return data
+    except FileNotFoundError:
+        print(f"Error: The file '{DATASET_FILE}' was not found.")
+        sys.exit()
 
-# Get user input for objective function
 def get_objective_criteria(headers):
-    print("Available criteria (you can select multiple):")
+    """
+    Get user input for objective function criteria.
+    """
+    print("\nAvailable criteria (you can select multiple):")
     print(", ".join(headers))
     print("Enter criteria in the format: '<header>=<weight>', separated by commas (e.g., goals=5,fouls=-3):")
-    criteria_input = input("Enter criteria: ")
-    criteria = {item.split("=")[0]: float(item.split("=")[1]) for item in criteria_input.split(",")}
-    return criteria
+    while True:
+        criteria_input = input("Enter criteria: ")
+        try:
+            criteria = {}
+            for item in criteria_input.split(","):
+                key, value = item.split("=")
+                key = key.strip()
+                value = float(value.strip())
+                if key not in headers:
+                    raise ValueError(f"Invalid header: '{key}'")
+                criteria[key] = value
+            if not criteria:
+                raise ValueError("No criteria provided.")
+            return criteria
+        except Exception as e:
+            print(f"Input error: {e}. Please try again.")
 
-# Get user input for constraints
 def get_constraints(headers):
-    print("Available constraints (you can specify multiple):")
+    """
+    Get user input for constraints.
+    """
+    print("\nAvailable constraints (you can specify multiple):")
     print(", ".join(headers))
-    print("Enter constraints in the format: '<header>=<value>' or '<header><=value>' separated by commas (e.g., fouls<=10,team_size=11):")
-    constraints_input = input("Enter constraints: ")
+    print("Enter constraints in the format: '<header>=<value>', '<header><=value>', '<header>>=value', separated by commas (e.g., fouls<=10,goals>=5):")
     constraints = []
-    for constraint in constraints_input.split(","):
-        if "<=" in constraint:
-            header, value = constraint.split("<=")
-            constraints.append({"type": "max", "header": header.strip(), "value": float(value.strip())})
-        elif ">=" in constraint:
-            header, value = constraint.split(">=")
-            constraints.append({"type": "min", "header": header.strip(), "value": float(value.strip())})
-        elif "=" in constraint:
-            header, value = constraint.split("=")
-            constraints.append({"type": "equal", "header": header.strip(), "value": float(value.strip())})
-    return constraints
+    while True:
+        constraints_input = input("Enter constraints: ")
+        try:
+            for constraint in constraints_input.split(","):
+                constraint = constraint.strip()
+                if "<=" in constraint:
+                    header, value = constraint.split("<=")
+                    ctype = "max"
+                elif ">=" in constraint:
+                    header, value = constraint.split(">=")
+                    ctype = "min"
+                elif "=" in constraint:
+                    header, value = constraint.split("=")
+                    ctype = "equal"
+                else:
+                    raise ValueError(f"Invalid constraint format: '{constraint}'")
+                header = header.strip()
+                value = float(value.strip())
+                if header not in headers:
+                    raise ValueError(f"Invalid header: '{header}'")
+                constraints.append({"type": ctype, "header": header, "value": value})
+            if not constraints:
+                raise ValueError("No constraints provided.")
+            return constraints
+        except Exception as e:
+            print(f"Input error: {e}. Please try again.")
 
-# Build and solve the optimization problem
 def solve_optimization(data, criteria, constraints):
+    """
+    Build and solve the optimization problem.
+    """
     # Define decision variables
     n = len(data)
-    x = {i: LpVariable(f"x_{i}", cat="Binary") for i in range(n)}
+    x = LpVariable.dicts("Select", range(n), cat="Binary")
 
     # Define the problem
     model = LpProblem("Dynamic_Team_Selection", LpMaximize)
 
     # Add objective function
     model += lpSum(
-        lpSum(criteria[header] * data.iloc[i][header] * x[i] for header in criteria) for i in range(n)
-    )
+        criteria[header] * data.loc[i, header] * x[i]
+        for i in range(n) for header in criteria
+    ), "Total_Score"
 
-    # Add constraints
-    for constraint in constraints:
+    # Add constraints with unique names
+    for idx, constraint in enumerate(constraints):
+        header = constraint["header"]
+        value = constraint["value"]
         if constraint["type"] == "max":
-            model += lpSum(data.iloc[i][constraint["header"]] * x[i] for i in range(n)) <= constraint["value"]
+            model += lpSum(data.loc[i, header] * x[i] for i in range(n)) <= value, f"Max_{header}_{idx}"
         elif constraint["type"] == "min":
-            model += lpSum(data.iloc[i][constraint["header"]] * x[i] for i in range(n)) >= constraint["value"]
+            model += lpSum(data.loc[i, header] * x[i] for i in range(n)) >= value, f"Min_{header}_{idx}"
         elif constraint["type"] == "equal":
-            model += lpSum(data.iloc[i][constraint["header"]] * x[i] for i in range(n)) == constraint["value"]
+            model += lpSum(data.loc[i, header] * x[i] for i in range(n)) == value, f"Equal_{header}_{idx}"
 
-    # Solve the problem
-    model.solve()
+    # Solve the problem with solver output suppressed
+    solver = PULP_CBC_CMD(msg=False)  # Suppress solver messages
+    status = model.solve(solver)
 
-    # Get selected players
-    selected_players = [data.iloc[i]["name"] for i in range(n) if x[i].value() == 1]
+    # Check if a feasible solution was found
+    if LpStatus[status] != 'Optimal':
+        print("No optimal solution found. Please adjust your criteria and constraints.")
+        sys.exit()
+
+    # Get selected players and calculate their individual scores
+    selected_players = []
+    for i in range(n):
+        if x[i].varValue == 1:
+            player_name = data.loc[i, "name"]
+            # Calculate individual score
+            individual_score = sum(criteria[header] * data.loc[i, header] for header in criteria)
+            selected_players.append((player_name, individual_score))
+
+    # Sort players based on their individual scores in descending order
+    selected_players.sort(key=lambda x: x[1], reverse=True)
+
     return selected_players
 
-# Main function
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: ./program <command>")
-        print("Commands:")
-        print("  help   - Display available headers and examples")
-        print("  run    - Run the optimization program")
-        sys.exit()
+    # Load dataset
+    data = load_dataset()
 
-    command = sys.argv[1].lower()
-    if command == "help":
-        display_help()
-    elif command == "run":
-        # Load dataset
-        data = load_dataset()
+    # Exclude non-numeric columns
+    non_numeric_cols = ['id', 'dob', 'name', 'nationality']
+    headers = [col for col in data.columns if col not in non_numeric_cols]
 
-        # Validate and clean dataset headers
-        headers = data.columns.tolist()
-        headers.remove("id")
-        headers.remove("dob")
-        headers.remove("name")
-        headers.remove("nationality")  # Remove non-numeric columns for optimization
+    # Ensure only numeric columns are included
+    numeric_headers = data[headers].select_dtypes(include=[float, int]).columns.tolist()
 
-        # Get user inputs
-        criteria = get_objective_criteria(headers)
-        constraints = get_constraints(headers)
+    # Get user inputs
+    criteria = get_objective_criteria(numeric_headers)
+    constraints = get_constraints(numeric_headers)
 
-        # Solve the problem
-        selected_players = solve_optimization(data, criteria, constraints)
+    # Combine criteria and constraint headers
+    relevant_columns = list(set(list(criteria.keys()) + [constraint['header'] for constraint in constraints]))
 
-        # Output results
-        print("Selected Players:")
-        print(selected_players)
-    else:
-        print("Unknown command. Use './program help' for guidance.")
-        sys.exit()
+    # Check for NaN values and handle them by dropping players with missing data
+    initial_player_count = len(data)
+    data = data.dropna(subset=relevant_columns).reset_index(drop=True)
+    final_player_count = len(data)
 
-# Entry point
+    if final_player_count < initial_player_count:
+        print(f"\n{initial_player_count - final_player_count} players were excluded due to missing data in selected criteria and constraints.")
+        if final_player_count == 0:
+            print("No players left after excluding those with missing data. Please adjust your criteria and constraints.")
+            sys.exit()
+
+    # Solve the problem
+    selected_players = solve_optimization(data, criteria, constraints)
+
+    # Output results
+    print("\nSelected Players (ordered by individual scores):")
+    for player, score in selected_players:
+        print(f"{player}: {score}")
+
 if __name__ == "__main__":
     main()
