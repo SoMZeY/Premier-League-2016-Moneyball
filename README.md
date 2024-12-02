@@ -6,11 +6,11 @@ The **Premier League 2016 Moneyball Optimization** program is a Python script de
 
 ## Features
 
-- **Customizable Criteria**: Define the performance metrics that matter to you (e.g., goals scored, assists, tackles) and assign weights to them.
-- **Flexible Constraints**: Set constraints such as minimum appearances, maximum red cards, budget limits, or any other statistical thresholds.
+- **Dynamic Metric Selection**: Choose the performance metric you want to maximize (e.g., goals scored, assists, tackles).
+- **Custom Constraints**: Define constraints on other metrics (e.g., maximum fouls, minimum clean sheets) to tailor the team selection to your strategy.
 - **Data Cleaning**: Automatically excludes players with missing data in relevant criteria and constraints to ensure accurate optimization.
-- **Optimized Team Selection**: Uses linear programming to select the team that maximizes your specified objective function while satisfying all constraints.
-- **Ordered Results**: Provides an ordered list of selected players based on their individual contributions to the team's overall score.
+- **Optimized Team Selection**: Employs binary integer programming to select the team that maximizes your specified objective while satisfying all constraints.
+- **Clear and Readable Code**: The program is well-documented with comments for easy understanding and modification.
 
 ## How to Download and Run
 
@@ -25,5 +25,3 @@ Install the required packages using pip:
 
 ```bash
 pip install pandas pulp
-```
-
