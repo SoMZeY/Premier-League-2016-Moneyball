@@ -1,6 +1,6 @@
 # Simple Dynamic Team Selection Optimization Program using Linear Programming
-# Author: Assistant
-# Date: [Current Date]
+# Author: Vladyslav Bordia, Patrick McKeever, Abby Gopal
+# Date: November 28th, 2024
 
 # Import necessary libraries
 import pandas as pd
