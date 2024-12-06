@@ -7,11 +7,6 @@ import pandas as pd
 from pulp import LpProblem, LpVariable, lpSum, LpMaximize, LpStatus, PULP_CBC_CMD
 
 def load_dataset():
-    """
-    Load the dataset from a CSV file.
-    Assumes the CSV file is named 'PlayerDataSet.csv' and is in the same directory as this script.
-    Returns a pandas DataFrame.
-    """
     try:
         data = pd.read_csv('PlayerDataSet.csv')
         return data
